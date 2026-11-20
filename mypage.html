@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마이페이지</title>
+  <script>
+    const SUPABASE_URL = "https://vyrlsntgnwdpbaaahgvg.supabase.co";
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fZ39zSVsiQa_vdo_kqkrFA_A8BSUA8u";
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <script src="theme.js"></script>
+  <style>body { visibility: hidden; }</style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="inner">
+      <a href="index.html" class="logo"><span class="logo-mark">P</span>내 포트폴리오</a>
+      <nav>
+        <a href="index.html">홈</a>
+        <a href="mypage.html">마이페이지</a>
+        <a href="#" id="logoutLink">로그아웃</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <h1>마이페이지</h1>
+
+    <div class="profile-card">
+      <div class="profile-item">
+        <p class="profile-label">이름</p>
+        <p class="profile-name" id="userName"></p>
+      </div>
+      <div class="profile-item">
+        <p class="profile-label">이메일</p>
+        <p class="profile-meta" id="userEmail"></p>
+      </div>
+      <div class="profile-item">
+        <p class="profile-label">생년월일</p>
+        <p class="profile-meta" id="userBirth"></p>
+      </div>
+      <div class="profile-item">
+        <p class="profile-label">좋아하는 색</p>
+        <p class="profile-meta"><span class="color-swatch" id="userColorSwatch"></span><span id="userColor"></span></p>
+      </div>
+      <div class="profile-item">
+        <p class="profile-label">한줄 소개</p>
+        <p class="profile-meta" id="userBio"></p>
+      </div>
+      <div class="profile-item">
+        <p class="profile-label">가입일</p>
+        <p class="profile-meta" id="userJoined"></p>
+      </div>
+    </div>
+
+    <h2 class="section-title">화면 설정</h2>
+    <div class="profile-card settings-card">
+      <div class="profile-item">
+        <p class="profile-label">화면 모드</p>
+        <label class="option">
+          <input type="checkbox" id="darkMode" class="switch" role="switch">
+          <span>다크 모드</span>
+        </label>
+      </div>
+      <div class="profile-item">
+        <p class="profile-label">컬러 적용하기</p>
+        <label class="option">
+          <input type="checkbox" id="useColor" class="switch" role="switch">
+          <span>내가 선택한 컬러 적용하기</span>
+          <span class="color-swatch" id="useColorSwatch" style="margin:0"></span>
+        </label>
+        <p class="profile-meta" id="useColorHint"></p>
+      </div>
+      <p class="settings-result" id="settingsResult"></p>
+    </div>
+  </main>
+
+  <script>
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    // 로그인/로그아웃/세션 확인 때마다 사이트 컬러를 갱신
+    supabaseClient.auth.onAuthStateChange((_event, session) => syncTheme(session));
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${d.getFullYear()}-${mm}-${dd}`;
+    }
+
+    // 로그인 상태를 먼저 확인하고, 아니면 내용을 보여주지 않고 바로 이동
+    (async () => {
+      let user = null;
+      try {
+        const { data } = await supabaseClient.auth.getSession();
+        user = data.session ? data.session.user : null;
+      } catch (err) {
+        user = null;
+      }
+
+      if (!user) {
+        location.replace("login.html");
+        return;
+      }
+
+      const meta = user.user_metadata || {};
+      document.getElementById("userName").textContent = meta.name || "이름 없음";
+      document.getElementById("userBirth").textContent = meta.birthdate || "-";
+      document.getElementById("userBio").textContent = meta.bio || "-";
+      if (meta.favorite_color) {
+        document.getElementById("userColor").textContent = meta.favorite_color;
+        document.getElementById("userColorSwatch").style.background = meta.favorite_color;
+      } else {
+        document.getElementById("userColor").textContent = "-";
+        document.getElementById("userColorSwatch").hidden = true;
+      }
+      document.getElementById("userEmail").textContent = user.email;
+      document.getElementById("userJoined").textContent = formatDate(user.created_at);
+
+      // ----- 화면 설정 (라이트/다크, 내 컬러 적용) -----
+      const darkMode = document.getElementById("darkMode");
+      const useColor = document.getElementById("useColor");
+      const settingsResult = document.getElementById("settingsResult");
+      const hasColor = !!meta.favorite_color;
+      let settings = {
+        theme_mode: meta.theme_mode === "dark" ? "dark" : "light",
+        use_favorite_color: hasColor && meta.use_favorite_color !== false,
+      };
+
+      function showSettings() {
+        darkMode.checked = settings.theme_mode === "dark";
+        useColor.checked = settings.use_favorite_color;
+      }
+      showSettings();
+
+      const swatch = document.getElementById("useColorSwatch");
+      if (hasColor) {
+        swatch.style.background = meta.favorite_color;
+        document.getElementById("useColorHint").textContent = "해제하면 기본 남색으로 보여요.";
+      } else {
+        swatch.hidden = true;
+        useColor.disabled = true;
+        document.getElementById("useColorHint").textContent = "선택해 둔 컬러가 없어서 기본 남색을 쓰고 있어요.";
+      }
+
+      async function saveSettings(changes) {
+        const previous = settings;
+        settings = { ...settings, ...changes };
+        settingsResult.textContent = "";
+        // 저장을 기다리지 않고 먼저 화면에 반영
+        syncTheme({ user: { user_metadata: { ...meta, ...settings } } });
+
+        const { error } = await supabaseClient.auth.updateUser({ data: changes });
+        if (error) {
+          settings = previous;
+          showSettings();
+          syncTheme({ user: { user_metadata: { ...meta, ...settings } } });
+          settingsResult.textContent = `저장하지 못했어요: ${error.message}`;
+        }
+      }
+
+      darkMode.addEventListener("change", () => saveSettings({ theme_mode: darkMode.checked ? "dark" : "light" }));
+      useColor.addEventListener("change", () => saveSettings({ use_favorite_color: useColor.checked }));
+
+      document.body.style.visibility = "visible";
+    })();
+
+    document.getElementById("logoutLink").addEventListener("click", async (e) => {
+      e.preventDefault();
+      await supabaseClient.auth.signOut();
+      location.href = "login.html";
+    });
+  </script>
+</body>
+</html>
